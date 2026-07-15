@@ -1,4 +1,4 @@
-const allCountries = [
+const _flagGameCountries = [
     {
         "id": "al",
         "name": "Albanie",
@@ -1496,6 +1496,8 @@ const allCountries = [
     }
 ];
 
-// Utilisable à la fois dans le navigateur (window.allCountries) et côté serveur (require)
-if (typeof window !== 'undefined') window.allCountries = allCountries;
-if (typeof module !== 'undefined' && module.exports) module.exports = allCountries;
+// Utilisable à la fois dans le navigateur (window.allCountries) et côté serveur (require).
+// Nommée différemment de "allCountries" (utilisé par script.js) pour éviter toute collision
+// de déclaration : ce fichier est chargé comme <script> classique, dans la même portée globale.
+if (typeof window !== 'undefined') window.allCountries = _flagGameCountries;
+if (typeof module !== 'undefined' && module.exports) module.exports = _flagGameCountries;
