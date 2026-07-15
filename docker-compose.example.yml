@@ -1,6 +1,6 @@
 services:
   flags-game:
-    build: .
+    image: ghcr.io/lk59/flag-game:latest
     container_name: flags-game
     volumes:
       - ./data:/app/data

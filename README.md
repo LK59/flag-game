@@ -2,17 +2,18 @@
 
 Jeu multijoueur en temps réel de reconnaissance de drapeaux (Node.js/Express + Socket.io + SQLite), avec comptes utilisateurs, classements en direct, profils et panneau d'administration.
 
-## Lancer le projet
+## Lancer le projet (image pré-buildée, sans cloner le dépôt)
+
+L'image est publiée automatiquement sur GHCR à chaque évolution du projet (`ghcr.io/lk59/flag-game`). Il suffit donc de créer un `docker-compose.yml` et de démarrer :
 
 ```bash
-git clone https://github.com/LK59/flag-game.git
-cd flag-game
-cp docker-compose.example.yml docker-compose.yml
+mkdir flag-game && cd flag-game
+curl -o docker-compose.yml https://raw.githubusercontent.com/LK59/flag-game/main/docker-compose.example.yml
 # éditer docker-compose.yml : renseigner ADMIN_USERNAME (voir ci-dessous)
-docker compose up -d --build
+docker compose up -d
 ```
 
-Le jeu écoute en interne sur le port `3000` (configurable via `PORT`). Le `docker-compose.example.yml` fourni suppose un reverse proxy externe relié au réseau Docker `web` (`networks: web: external: true`) — créez ce réseau au préalable (`docker network create web`) ou adaptez le fichier à votre infrastructure si vous n'en utilisez pas.
+Le jeu écoute en interne sur le port `3000` (configurable via `PORT`). Le compose fourni suppose un reverse proxy externe relié au réseau Docker `web` (`networks: web: external: true`) — créez ce réseau au préalable (`docker network create web`) ou adaptez le fichier à votre infrastructure si vous n'en utilisez pas.
 
 ### Contenu de `docker-compose.example.yml`
 
@@ -21,7 +22,7 @@ Fourni ici en clair pour un déploiement rapide (copier-coller direct dans un `d
 ```yaml
 services:
   flags-game:
-    build: .
+    image: ghcr.io/lk59/flag-game:latest
     container_name: flags-game
     volumes:
       - ./data:/app/data
@@ -40,6 +41,19 @@ services:
 networks:
   web:
     external: true
+```
+
+Pour mettre à jour vers la dernière image : `docker compose pull && docker compose up -d`.
+
+## Builder depuis les sources (pour développer/modifier le code)
+
+```bash
+git clone https://github.com/LK59/flag-game.git
+cd flag-game
+cp docker-compose.example.yml docker-compose.yml
+# dans docker-compose.yml : remplacer "image: ghcr.io/lk59/flag-game:latest" par "build: ."
+# et renseigner ADMIN_USERNAME
+docker compose up -d --build
 ```
 
 ## Variables d'environnement

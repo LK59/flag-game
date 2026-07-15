@@ -8,3 +8,6 @@ docker-compose.yml
 
 .env
 .env.*
+
+# État interne d'outils locaux (non lié au projet)
+.claude/
