@@ -198,15 +198,17 @@ button { padding: 12px 22px; border: none; border-radius: var(--radius-sm); curs
 .btn-primary:hover { background: var(--secondary-hover); transform: translateY(-1px); box-shadow: 0 6px 14px rgba(30, 58, 95, 0.25); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { filter: brightness(1.08); transform: translateY(-1px); }
-.btn-default { background: var(--input-bg); color: var(--primary); border: 1px solid var(--border); width: 100%; margin-bottom: var(--space-5); }
+.btn-default { background: var(--input-bg); color: var(--primary); border: 1px solid var(--border); }
 .btn-default:hover { background: var(--highlight-bg); }
+/* Modificateur explicite pour les boutons pleine largeur (retour menu, fermeture de modale) */
+.btn-block { display: block; width: 100%; margin-bottom: var(--space-5); }
 .btn-admin { background: var(--gold-soft); border-color: var(--gold); color: #7a5b0d; }
 .btn-admin:hover { background: var(--gold); color: #2b2005; }
 :root[data-theme="dark"] .btn-admin { color: #f0dfa8; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-admin { color: #f0dfa8; } }
 button:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; transform: none !important; box-shadow: none !important; }
 
-.modal-close-btn { margin-top: var(--space-4); margin-bottom: 0; }
+.modal-close-btn { display: block; width: 100%; margin-top: var(--space-4); margin-bottom: 0; }
 
 input[type="text"], input[type="password"] { padding: 15px; font-size: 16px; border: 2px solid var(--border); border-radius: var(--radius-md); width: 100%; max-width: 500px; outline: none; transition: border-color 0.2s, background 0.2s; background: var(--input-bg); box-sizing: border-box; font-family: var(--font-body); color: var(--primary); }
 input[type="text"]:focus, input[type="password"]:focus { border-color: var(--secondary); background: var(--bg-card); }
@@ -311,7 +313,7 @@ li.li-me { background: var(--highlight-bg); font-weight: 600; padding: 10px; bor
 #auth-submit-btn { width: 100%; margin-top: var(--space-2); }
 #auth-toggle-wrap { text-align: center; font-size: 13px; margin-top: var(--space-4); }
 #auth-back-wrap { text-align: center; font-size: 13px; margin-top: var(--space-4); display: none; }
-#auth-cancel-btn { margin-top: var(--space-2); margin-bottom: 0; }
+#auth-cancel-btn { display: block; width: 100%; margin-top: var(--space-2); margin-bottom: 0; }
 
 .mt-8 { margin-top: var(--space-2); }
 .mt-12 { margin-top: var(--space-3); }

@@ -41,7 +41,7 @@
             </div>
 
             <div id="sidebar-game">
-                <button class="btn-default" onclick="goToMenu()">⬅ Retour aux programmes</button>
+                <button class="btn-default btn-block" onclick="goToMenu()">⬅ Retour aux programmes</button>
                 <div class="leaderboard-title" id="current-mode-title">Classement du module</div>
                 <ul id="live-leaderboard"></ul>
             </div>
@@ -124,7 +124,7 @@
     <!-- Modal générique : Profil joueur -->
     <div id="profile-modal" class="modal-overlay" onclick="if(event.target===this) closeModal('profile-modal')">
         <div class="modal-box">
-            <div id="profile-modal-content" class="spinner-wrap"><span class="spinner"></span> Chargement…</div>
+            <div id="profile-modal-content"><div class="spinner-wrap"><span class="spinner"></span> Chargement…</div></div>
             <button class="btn-default modal-close-btn" onclick="closeModal('profile-modal')">Fermer</button>
         </div>
     </div>
@@ -132,7 +132,7 @@
     <!-- Modal générique : Panneau d'administration -->
     <div id="admin-modal" class="modal-overlay" onclick="if(event.target===this) closeModal('admin-modal')">
         <div class="modal-box modal-wide">
-            <div id="admin-modal-content" class="spinner-wrap"><span class="spinner"></span> Chargement…</div>
+            <div id="admin-modal-content"><div class="spinner-wrap"><span class="spinner"></span> Chargement…</div></div>
             <button class="btn-default modal-close-btn" onclick="closeModal('admin-modal')">Fermer</button>
         </div>
     </div>
