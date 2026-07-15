@@ -79,6 +79,19 @@
             return `${m}:${String(s).padStart(2, '0')}`;
         }
 
+        function formatLastSeen(timestamp) {
+            if (!timestamp) return 'Jamais connecté';
+            const date = new Date(timestamp);
+            return `${date.toLocaleDateString('fr-FR')} à ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+        }
+
+        // Petite pastille avatar utilisée dans les classements (photo si disponible, sinon initiale)
+        function miniAvatarHtml(pseudo, avatarPath) {
+            return avatarPath
+                ? `<img class="player-avatar-mini" src="${escapeHtml(avatarPath)}" alt="">`
+                : `<span class="player-avatar-mini player-avatar-mini-fallback">${escapeHtml(pseudo.charAt(0).toUpperCase())}</span>`;
+        }
+
         const REGION_LABELS = { monde: "Monde", europe: "Europe", afrique: "Afrique", asie: "Asie", amerique: "Amérique", oceanie: "Océanie", revision: "Révision ciblée", duel: "Duel" };
 
         function formatModeLabel(mode) {
@@ -335,6 +348,7 @@
                     <div>
                         <h2 class="profile-name">${escapeHtml(data.username)}</h2>
                         ${data.description ? `<div class="profile-description">${escapeHtml(data.description)}</div>` : ''}
+                        ${data.hasAccount ? `<div class="profile-last-seen">Dernière connexion : ${formatLastSeen(data.last_login)}</div>` : ''}
                     </div>
                 </div>
                 <div class="panel-section">
@@ -518,9 +532,10 @@
                     html += `
                         <div class="admin-row">
                             <div class="admin-row-info">
+                                ${miniAvatarHtml(u.username, u.avatar_path)}
                                 <span class="profile-link" data-pseudo="${escapeHtml(u.username)}" onclick="openProfile(this.dataset.pseudo)">${escapeHtml(u.username)}</span>
                                 ${roleBadge}
-                                <span class="admin-meta">inscrit le ${created}</span>
+                                <span class="admin-meta">inscrit le ${created} · vu le ${formatLastSeen(u.last_login)}</span>
                             </div>
                             <div class="admin-row-actions">
                                 <input type="text" id="rename-${escapeHtml(u.username)}" value="${escapeHtml(u.username)}" class="admin-input-sm">
@@ -896,7 +911,7 @@
             data.forEach(row => {
                 if (!playerTotals[row.pseudo]) {
                     // Si on a l'info 'online' venant du serveur, on l'utilise
-                    playerTotals[row.pseudo] = { score: 0, online: row.online || false }; 
+                    playerTotals[row.pseudo] = { score: 0, online: row.online || false, avatar_path: row.avatar_path || null };
                 }
                 playerTotals[row.pseudo].score += row.score;
                 if(row.online) playerTotals[row.pseudo].online = true;
@@ -918,6 +933,7 @@
                         <span class="player-info">
                             ${rankMarker}
                             <span class="${dotClass}"></span>
+                            ${miniAvatarHtml(p.pseudo, p.avatar_path)}
                             <span class="profile-link" data-pseudo="${escapeHtml(p.pseudo)}" onclick="openProfile(this.dataset.pseudo)">${escapeHtml(p.pseudo)}</span>
                             ${challengeButtonHtml(p)}
                         </span>
@@ -1323,6 +1339,7 @@
                         <span class="player-info">
                             ${rankMarker}
                             <span class="${dotClass}"></span>
+                            ${miniAvatarHtml(p.pseudo, p.avatar_path)}
                             <span class="profile-link" data-pseudo="${escapeHtml(p.pseudo)}" onclick="openProfile(this.dataset.pseudo)">${escapeHtml(p.pseudo)}</span>
                             ${challengeButtonHtml(p)}
                         </span>

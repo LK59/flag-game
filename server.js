@@ -137,10 +137,11 @@ db.serialize(() => {
         avatar_path TEXT DEFAULT NULL,
         session_token TEXT DEFAULT NULL,
         created_at INTEGER DEFAULT 0,
-        role TEXT DEFAULT 'user'
+        role TEXT DEFAULT 'user',
+        last_login INTEGER DEFAULT NULL
     )`);
 
-    // Migration : ajout du rôle sur les bases existantes
+    // Migration : ajout du rôle et de la dernière connexion sur les bases existantes
     db.all("PRAGMA table_info(users)", (err, columns) => {
         if (err) return console.error(err);
         const columnNames = columns.map(c => c.name);
@@ -151,6 +152,9 @@ db.serialize(() => {
             });
         } else {
             db.run("UPDATE users SET role = 'admin' WHERE username = ? AND role != 'admin'", [ADMIN_USERNAME]);
+        }
+        if (!columnNames.includes('last_login')) {
+            db.run("ALTER TABLE users ADD COLUMN last_login INTEGER DEFAULT NULL");
         }
     });
 
@@ -175,10 +179,12 @@ const onlineUsers = new Map();
 const socketsByPseudo = new Map();
 
 function broadcastModeLeaderboard(mode) {
-    db.all(`SELECT pseudo, score, best_score, best_time_seconds, last_duration_seconds, end_time
-            FROM game_states WHERE mode = ?
-            ORDER BY score DESC,
-                     CASE WHEN last_duration_seconds > 0 THEN last_duration_seconds ELSE 999999999 END ASC
+    db.all(`SELECT gs.pseudo, gs.score, gs.best_score, gs.best_time_seconds, gs.last_duration_seconds, gs.end_time,
+                    u.avatar_path, u.last_login
+            FROM game_states gs LEFT JOIN users u ON u.username = gs.pseudo
+            WHERE gs.mode = ?
+            ORDER BY gs.score DESC,
+                     CASE WHEN gs.last_duration_seconds > 0 THEN gs.last_duration_seconds ELSE 999999999 END ASC
             LIMIT 30`, [mode], (err, rows) => {
         if (err) return console.error(err);
         const onlinePseudos = Array.from(onlineUsers.values());
@@ -189,6 +195,8 @@ function broadcastModeLeaderboard(mode) {
             best_score: r.best_score,
             best_time_seconds: r.best_time_seconds,
             end_time: r.end_time,
+            avatar_path: r.avatar_path,
+            last_login: r.last_login,
             online: onlinePseudos.includes(r.pseudo)
         }));
 
@@ -198,16 +206,18 @@ function broadcastModeLeaderboard(mode) {
 
 function broadcastGlobalLeaderboards() {
     // On ajoute "end_time" dans la requête SQL pour que le menu sache qui joue actuellement
-    db.all("SELECT pseudo, mode, score, end_time FROM game_states ORDER BY score DESC", (err, rows) => {
+    db.all(`SELECT gs.pseudo, gs.mode, gs.score, gs.end_time, u.avatar_path, u.last_login
+            FROM game_states gs LEFT JOIN users u ON u.username = gs.pseudo
+            ORDER BY gs.score DESC`, (err, rows) => {
         if (err) return console.error(err);
-        
+
         // On récupère qui est en ligne pour afficher le point vert dans le menu global
         const onlinePseudos = Array.from(onlineUsers.values());
         const data = rows.map(r => ({
             ...r,
             online: onlinePseudos.includes(r.pseudo)
         }));
-        
+
         io.emit('global_leaderboards', data);
     });
 }
@@ -265,6 +275,10 @@ io.on('connection', (socket) => {
         }
         db.get("SELECT username FROM users WHERE session_token = ? AND username = ?", [token, pseudo], (err, row) => {
             socket.data.authedUsername = (row && row.username) || null;
+            if (socket.data.authedUsername) {
+                // Marque la dernière connexion à chaque session validée (login initial ou reprise via token stocké)
+                db.run("UPDATE users SET last_login = ? WHERE username = ?", [Date.now(), socket.data.authedUsername]);
+            }
             broadcastGlobalLeaderboards();
         });
     });
@@ -596,7 +610,7 @@ app.get('/api/me', checkAuth, (req, res) => {
 app.get('/api/profile/:username', (req, res) => {
     const { username } = req.params;
 
-    db.get("SELECT description, avatar_path, created_at FROM users WHERE username = ?", [username], (err, userRow) => {
+    db.get("SELECT description, avatar_path, created_at, last_login FROM users WHERE username = ?", [username], (err, userRow) => {
         if (err) return res.status(500).json({ error: "Erreur serveur." });
 
         db.all("SELECT mode, score, best_score, best_time_seconds, last_duration_seconds FROM game_states WHERE pseudo = ? ORDER BY best_score DESC", [username], (err2, stats) => {
@@ -608,6 +622,7 @@ app.get('/api/profile/:username', (req, res) => {
                 description: userRow ? userRow.description : '',
                 avatar_path: userRow ? userRow.avatar_path : null,
                 created_at: userRow ? userRow.created_at : null,
+                last_login: userRow ? userRow.last_login : null,
                 stats: stats || []
             });
         });
@@ -781,7 +796,7 @@ app.post('/api/admin/nuke', checkAdmin, (req, res) => {
 
 // Liste des comptes utilisateurs (gestion des rôles, renommage)
 app.get('/api/admin/users', checkAdmin, (req, res) => {
-    db.all("SELECT username, role, avatar_path, created_at FROM users ORDER BY created_at ASC", (err, rows) => {
+    db.all("SELECT username, role, avatar_path, created_at, last_login FROM users ORDER BY created_at ASC", (err, rows) => {
         if (err) return res.status(500).json({ error: "Erreur serveur." });
         res.json(rows.map(r => ({ ...r, role: r.role || 'user' })));
     });
