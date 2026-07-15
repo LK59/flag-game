@@ -30,6 +30,49 @@
             return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
 
+        // Modales de confirmation/alerte "maison", à la place des confirm()/alert() natifs du navigateur
+        function showConfirmModal({ title = 'Confirmer', message, confirmLabel = 'Confirmer', danger = false, onConfirm }) {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay confirm-modal-overlay';
+            overlay.style.display = 'flex';
+            overlay.innerHTML = `
+                <div class="modal-box confirm-modal-box">
+                    <h2>${escapeHtml(title)}</h2>
+                    <p class="confirm-modal-message">${message}</p>
+                    <div class="confirm-modal-actions">
+                        <button class="btn-default" type="button">Annuler</button>
+                        <button class="${danger ? 'btn-danger' : 'btn-primary'}" type="button">${escapeHtml(confirmLabel)}</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+            const close = () => overlay.remove();
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+            const [cancelBtn, confirmBtn] = overlay.querySelectorAll('.confirm-modal-actions button');
+            cancelBtn.onclick = close;
+            confirmBtn.onclick = () => { close(); onConfirm(); };
+            confirmBtn.focus();
+        }
+
+        function showAlertModal(message, title = '', onClose) {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay confirm-modal-overlay';
+            overlay.style.display = 'flex';
+            overlay.innerHTML = `
+                <div class="modal-box confirm-modal-box">
+                    ${title ? `<h2>${escapeHtml(title)}</h2>` : ''}
+                    <p class="confirm-modal-message">${message}</p>
+                    <div class="confirm-modal-actions">
+                        <button class="btn-primary" type="button">OK</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+            const close = () => { overlay.remove(); if (onClose) onClose(); };
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+            const okBtn = overlay.querySelector('.confirm-modal-actions button');
+            okBtn.onclick = close;
+            okBtn.focus();
+        }
+
         function formatDuration(seconds) {
             const m = Math.floor(seconds / 60);
             const s = seconds % 60;
@@ -45,19 +88,38 @@
             return `${region} (${duration})`;
         }
 
+        // --- THÈME CLAIR / SOMBRE ---
+        function currentTheme() {
+            const explicit = document.documentElement.getAttribute('data-theme');
+            if (explicit) return explicit;
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+
+        function themeToggleButtonHtml() {
+            const isDark = currentTheme() === 'dark';
+            return `<button class="btn-small theme-toggle-btn" onclick="toggleTheme()" title="${isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}" aria-label="Changer de thème">${isDark ? '☀' : '☾'}</button>`;
+        }
+
+        function toggleTheme() {
+            const next = currentTheme() === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            try { localStorage.setItem('flagGameTheme', next); } catch (e) {}
+            renderAccountArea();
+        }
+
         function renderAccountArea() {
             const area = document.getElementById('account-area');
-            let html = '';
+            let html = themeToggleButtonHtml();
             if (currentUserRole === 'admin') {
-                html += `<button class="btn-small btn-admin" onclick="openAdminPanel()">🛠️ Panneau admin</button>`;
+                html += `<button class="btn-small btn-admin" onclick="openAdminPanel()">Panneau admin</button>`;
             }
             if (authToken) {
                 html += `
-                    <button class="btn-small" onclick="openProfile(playerPseudo)">👤 Mon profil</button>
+                    <button class="btn-small" onclick="openProfile(playerPseudo)">Mon profil</button>
                     <button class="btn-small" onclick="logout()">Déconnexion</button>
                 `;
             } else {
-                html += `<button class="btn-small" onclick="openAuthModal('login')">🔐 Connexion / Inscription</button>`;
+                html += `<button class="btn-small" onclick="openAuthModal('login')">Connexion / Inscription</button>`;
             }
             area.innerHTML = html;
         }
@@ -223,71 +285,95 @@
                 ? `<img class="profile-avatar" src="${escapeHtml(data.avatar_path)}" alt="Avatar">`
                 : `<div class="profile-avatar">${escapeHtml(data.username.charAt(0).toUpperCase())}</div>`;
 
-            let statsHtml = '';
+            let statsHtml;
             if (data.stats && data.stats.length > 0) {
-                statsHtml += `
-                    <div class="profile-stats-row profile-stats-header">
-                        <div>Mode</div><div>Score</div><div>Record</div><div>Temps record</div>
-                    </div>`;
+                let rows = '';
                 data.stats.forEach(s => {
-                    statsHtml += `
-                        <div class="profile-stats-row">
-                            <div>${formatModeLabel(s.mode)}</div>
-                            <div>${s.score}</div>
-                            <div>${s.best_score}</div>
-                            <div>${s.best_time_seconds != null ? formatDuration(s.best_time_seconds) : '-'}</div>
-                        </div>`;
+                    rows += `
+                        <tr>
+                            <td>${formatModeLabel(s.mode)}</td>
+                            <td class="num">${s.score}</td>
+                            <td class="num">${s.best_score}</td>
+                            <td class="num">${s.best_time_seconds != null ? formatDuration(s.best_time_seconds) : '–'}</td>
+                        </tr>`;
                 });
+                statsHtml = `
+                    <table class="mini-table">
+                        <thead><tr><th>Mode</th><th class="num">Score</th><th class="num">Record</th><th class="num">Temps record</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>`;
             } else {
                 statsHtml = '<p class="admin-empty">Aucune partie jouée pour le moment.</p>';
             }
 
-            let historyHtml = '';
+            let historySectionHtml = '';
             if (history && history.length > 0) {
-                historyHtml += `<h3 class="profile-section-title">📈 Historique récent</h3><div class="history-table">`;
+                let rows = '';
                 history.forEach(h => {
                     const date = new Date(h.played_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-                    historyHtml += `
-                        <div class="history-row">
-                            <div>${date}</div>
-                            <div>${formatModeLabel(h.mode)}</div>
-                            <div class="history-score">${h.score} pts</div>
-                            <div>${formatDuration(h.duration_seconds)}</div>
-                        </div>`;
+                    rows += `
+                        <tr>
+                            <td>${date}</td>
+                            <td>${formatModeLabel(h.mode)}</td>
+                            <td class="num history-score">${h.score} pts</td>
+                            <td class="num">${formatDuration(h.duration_seconds)}</td>
+                        </tr>`;
                 });
-                historyHtml += `</div>`;
+                historySectionHtml = `
+                    <div class="panel-section">
+                        <h3 class="panel-section-title">📈 Historique récent</h3>
+                        <table class="mini-table">
+                            <thead><tr><th>Date</th><th>Mode</th><th class="num">Score</th><th class="num">Durée</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>`;
             }
 
             let html = `
-                <div class="profile-header">
+                <div class="panel-section profile-header-card">
                     ${avatarHtml}
                     <div>
                         <h2 class="profile-name">${escapeHtml(data.username)}</h2>
                         ${data.description ? `<div class="profile-description">${escapeHtml(data.description)}</div>` : ''}
                     </div>
                 </div>
-                ${statsHtml}
-                ${historyHtml}
+                <div class="panel-section">
+                    <h3 class="panel-section-title">🏆 Statistiques par mode</h3>
+                    ${statsHtml}
+                </div>
+                ${historySectionHtml}
             `;
 
             if (isMe) {
                 html += `
-                    <div class="profile-edit-section">
-                        <h3 class="profile-section-title">Modifier mon profil</h3>
-                        <textarea id="profile-description-input" placeholder="Décrivez-vous en quelques mots...">${escapeHtml(data.description || '')}</textarea>
-                        <button class="btn-primary mt-8" onclick="saveDescription()">Enregistrer la description</button>
-                        <div class="mt-12">
-                            <input type="file" id="profile-avatar-input" accept="image/png,image/jpeg,image/webp,image/gif">
-                            <button class="btn-primary mt-8" onclick="uploadAvatar()">Changer la photo</button>
+                    <div class="panel-section">
+                        <h3 class="panel-section-title">✏️ Modifier mon profil</h3>
+                        <div class="field-group">
+                            <label class="field-label" for="profile-description-input">Description</label>
+                            <textarea id="profile-description-input" placeholder="Décrivez-vous en quelques mots...">${escapeHtml(data.description || '')}</textarea>
+                            <div class="form-actions"><button class="btn-primary" onclick="saveDescription()">Enregistrer la description</button></div>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="profile-avatar-input">Photo de profil</label>
+                            <div class="file-input-row">
+                                <input type="file" id="profile-avatar-input" accept="image/png,image/jpeg,image/webp,image/gif">
+                                <button class="btn-primary" onclick="uploadAvatar()">Changer la photo</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="profile-edit-section">
-                        <h3 class="profile-section-title">Changer mon mot de passe</h3>
-                        <input type="password" id="profile-current-password" placeholder="Mot de passe actuel" autocomplete="current-password">
-                        <input type="password" id="profile-new-password" placeholder="Nouveau mot de passe (6 caractères min.)" autocomplete="new-password">
+                    <div class="panel-section">
+                        <h3 class="panel-section-title">🔒 Changer mon mot de passe</h3>
+                        <div class="field-group">
+                            <label class="field-label" for="profile-current-password">Mot de passe actuel</label>
+                            <input type="password" id="profile-current-password" placeholder="Mot de passe actuel" autocomplete="current-password">
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="profile-new-password">Nouveau mot de passe</label>
+                            <input type="password" id="profile-new-password" placeholder="6 caractères minimum" autocomplete="new-password">
+                        </div>
                         <div id="profile-password-error" class="modal-error"></div>
                         <div id="profile-password-success" class="modal-success"></div>
-                        <button class="btn-primary mt-8" onclick="changePassword()">Mettre à jour le mot de passe</button>
+                        <div class="form-actions"><button class="btn-primary" onclick="changePassword()">Mettre à jour le mot de passe</button></div>
                     </div>
                 `;
             }
@@ -324,7 +410,7 @@
             })
             .then(res => res.json())
             .then(data => {
-                if (data.error) { alert(data.error); return; }
+                if (data.error) { showAlertModal(escapeHtml(data.error)); return; }
                 suppressHistoryPush = true;
                 openProfile(playerPseudo);
                 suppressHistoryPush = false;
@@ -396,7 +482,7 @@
             let html = '<h2 class="profile-section-title">🛠️ Panneau d\'administration</h2>';
 
             // Demandes de réinitialisation de mot de passe
-            html += '<h3>🔑 Demandes de réinitialisation de mot de passe</h3>';
+            html += '<div class="panel-section"><h3 class="panel-section-title">🔑 Demandes de réinitialisation de mot de passe</h3>';
             if (resetRequests.length === 0) {
                 html += '<p class="admin-empty">Aucune demande en attente.</p>';
             } else {
@@ -416,9 +502,10 @@
                         </div>`;
                 });
             }
+            html += '</div>';
 
             // Comptes utilisateurs
-            html += '<h3>👥 Comptes utilisateurs</h3>';
+            html += '<div class="panel-section"><h3 class="panel-section-title">👥 Comptes utilisateurs</h3>';
             if (users.length === 0) {
                 html += '<p class="admin-empty">Aucun compte enregistré.</p>';
             } else {
@@ -443,9 +530,10 @@
                         </div>`;
                 });
             }
+            html += '</div>';
 
             // Sessions de jeu
-            html += '<h3>🎮 Sessions de jeu</h3>';
+            html += '<div class="panel-section"><h3 class="panel-section-title">🎮 Sessions de jeu</h3>';
             if (players.length === 0) {
                 html += '<p class="admin-empty">Aucune session enregistrée.</p>';
             } else {
@@ -456,7 +544,7 @@
                 players.forEach(p => {
                     const isInfini = p.mode.includes("999999");
                     const isActive = isInfini ? p.end_time > 0 : p.end_time > now;
-                    const statusHtml = isActive ? '<span class="status-active">En cours</span>' : '<span class="status-ended">Terminé/Attente</span>';
+                    const statusHtml = isActive ? '<span class="status-pill active">En cours</span>' : '<span class="status-pill ended">Terminé/Attente</span>';
                     html += `
                         <tr>
                             <td><strong>${escapeHtml(p.pseudo)}</strong></td>
@@ -471,11 +559,12 @@
                 });
                 html += '</tbody></table></div>';
             }
+            html += '</div>';
 
             // Zone dangereuse
             html += `
-                <div class="admin-danger-zone">
-                    <h3 class="profile-section-title admin-danger-title">⚠️ Zone dangereuse</h3>
+                <div class="panel-section admin-danger-zone">
+                    <h3 class="panel-section-title admin-danger-title">⚠️ Zone dangereuse</h3>
                     <p class="admin-empty">Efface définitivement tous les scores et statistiques de tous les joueurs (les comptes utilisateurs sont conservés).</p>
                     <button class="btn-danger" onclick="adminNukeDB()">Tout effacer</button>
                 </div>`;
@@ -487,7 +576,7 @@
             const input = document.getElementById('reset-pw-' + username);
             const newPassword = input.value;
             if (!newPassword || newPassword.length < 6) {
-                alert("Le nouveau mot de passe doit contenir au moins 6 caractères.");
+                showAlertModal("Le nouveau mot de passe doit contenir au moins 6 caractères.");
                 return;
             }
             adminApiFetch(`/api/admin/password-reset-requests/${encodeURIComponent(username)}/resolve`, {
@@ -495,63 +584,101 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ newPassword })
             }).then(({ ok, data }) => {
-                if (!ok) { alert(data.error || "Erreur."); return; }
-                alert(`Nouveau mot de passe défini pour ${username}. Communiquez-le-lui : ${newPassword}`);
+                if (!ok) { showAlertModal(escapeHtml(data.error || "Erreur.")); return; }
+                showAlertModal(`Nouveau mot de passe défini pour <strong>${escapeHtml(username)}</strong>. Communiquez-le-lui : <strong>${escapeHtml(newPassword)}</strong>`, "Mot de passe réinitialisé");
                 loadAdminPanel();
             });
         }
 
         function adminRejectReset(username) {
-            if (!confirm(`Rejeter la demande de réinitialisation de "${username}" ?`)) return;
-            adminApiFetch(`/api/admin/password-reset-requests/${encodeURIComponent(username)}`, { method: 'DELETE' })
-                .then(() => loadAdminPanel());
+            showConfirmModal({
+                title: 'Rejeter la demande',
+                message: `Rejeter la demande de réinitialisation de "${escapeHtml(username)}" ?`,
+                confirmLabel: 'Rejeter',
+                danger: true,
+                onConfirm: () => {
+                    adminApiFetch(`/api/admin/password-reset-requests/${encodeURIComponent(username)}`, { method: 'DELETE' })
+                        .then(() => loadAdminPanel());
+                }
+            });
         }
 
         function adminRenameUser(oldUsername) {
             const newUsername = document.getElementById('rename-' + oldUsername).value.trim();
             if (newUsername === oldUsername) return;
-            if (!confirm(`Renommer "${oldUsername}" en "${newUsername}" ? Ses scores et son profil seront conservés.`)) return;
-
-            adminApiFetch('/api/admin/rename-user', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ oldUsername, newUsername })
-            }).then(({ ok, data }) => {
-                if (!ok) { alert(data.error || "Erreur."); return; }
-                loadAdminPanel();
+            showConfirmModal({
+                title: 'Renommer le compte',
+                message: `Renommer "${escapeHtml(oldUsername)}" en "${escapeHtml(newUsername)}" ? Ses scores et son profil seront conservés.`,
+                confirmLabel: 'Renommer',
+                onConfirm: () => {
+                    adminApiFetch('/api/admin/rename-user', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ oldUsername, newUsername })
+                    }).then(({ ok, data }) => {
+                        if (!ok) { showAlertModal(escapeHtml(data.error || "Erreur.")); return; }
+                        loadAdminPanel();
+                    });
+                }
             });
         }
 
         function adminSetRole(username, role) {
             const action = role === 'admin' ? 'promouvoir administrateur' : 'rétrograder en utilisateur standard';
-            if (!confirm(`Confirmer : ${action} le compte "${username}" ?`)) return;
-
-            adminApiFetch('/api/admin/set-role', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, role })
-            }).then(({ ok, data }) => {
-                if (!ok) { alert(data.error || "Erreur."); return; }
-                loadAdminPanel();
+            showConfirmModal({
+                title: 'Confirmer le changement de rôle',
+                message: `Confirmer : ${action} le compte "${escapeHtml(username)}" ?`,
+                confirmLabel: 'Confirmer',
+                onConfirm: () => {
+                    adminApiFetch('/api/admin/set-role', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, role })
+                    }).then(({ ok, data }) => {
+                        if (!ok) { showAlertModal(escapeHtml(data.error || "Erreur.")); return; }
+                        loadAdminPanel();
+                    });
+                }
             });
         }
 
         function adminResetSession(pseudo, mode) {
-            if (!confirm(`Remettre le score de "${pseudo}" à zéro sur ce mode ?`)) return;
-            adminApiFetch(`/api/admin/reset/${encodeURIComponent(pseudo)}/${encodeURIComponent(mode)}`, { method: 'POST' })
-                .then(() => loadAdminPanel());
+            showConfirmModal({
+                title: 'Remettre le score à zéro',
+                message: `Remettre le score de "${escapeHtml(pseudo)}" à zéro sur ce mode ?`,
+                confirmLabel: 'Remettre à zéro',
+                danger: true,
+                onConfirm: () => {
+                    adminApiFetch(`/api/admin/reset/${encodeURIComponent(pseudo)}/${encodeURIComponent(mode)}`, { method: 'POST' })
+                        .then(() => loadAdminPanel());
+                }
+            });
         }
 
         function adminDeleteSession(pseudo, mode) {
-            if (!confirm(`Supprimer la session de "${pseudo}" sur ce mode ?`)) return;
-            adminApiFetch(`/api/admin/player/${encodeURIComponent(pseudo)}/${encodeURIComponent(mode)}`, { method: 'DELETE' })
-                .then(() => loadAdminPanel());
+            showConfirmModal({
+                title: 'Supprimer la session',
+                message: `Supprimer la session de "${escapeHtml(pseudo)}" sur ce mode ?`,
+                confirmLabel: 'Supprimer',
+                danger: true,
+                onConfirm: () => {
+                    adminApiFetch(`/api/admin/player/${encodeURIComponent(pseudo)}/${encodeURIComponent(mode)}`, { method: 'DELETE' })
+                        .then(() => loadAdminPanel());
+                }
+            });
         }
 
         function adminNukeDB() {
-            if (!confirm("ATTENTION ! Effacer tous les scores et statistiques de TOUS les joueurs ? Cette action est irréversible.")) return;
-            adminApiFetch('/api/admin/nuke', { method: 'POST' })
-                .then(() => loadAdminPanel());
+            showConfirmModal({
+                title: 'Tout effacer',
+                message: "ATTENTION ! Effacer tous les scores et statistiques de TOUS les joueurs ? Cette action est irréversible.",
+                confirmLabel: 'Tout effacer définitivement',
+                danger: true,
+                onConfirm: () => {
+                    adminApiFetch('/api/admin/nuke', { method: 'POST' })
+                        .then(() => loadAdminPanel());
+                }
+            });
         }
 
         // === NAVIGATION PAR URL (boutons précédent/suivant du navigateur) ===
@@ -651,10 +778,10 @@
             const durations = [3, 10, 20, 999999];
 
             let html = `<div class="category-container region-revision">
-                            <div class="category-title">🎯 Révision ciblée</div>
-                            <div class="revision-hint">Rejouez uniquement les drapeaux sur lesquels vous vous trompez le plus.</div>
+                            <div class="category-title">Révision ciblée</div>
+                            <div class="revision-hint" id="revision-hint-text">Rejouez uniquement les drapeaux sur lesquels vous vous trompez le plus.</div>
                             <div class="duration-buttons">
-                                <button class="btn-mode" onclick="openRevisionMode()">Réviser mes drapeaux faibles</button>
+                                <button class="btn-mode" id="btn-revision" onclick="openRevisionMode()" disabled>Réviser mes drapeaux faibles</button>
                             </div>
                         </div>`;
 
@@ -673,7 +800,27 @@
             container.innerHTML = html;
         }
 
+        // Grise le mode révision tant qu'il n'y a pas assez de statistiques personnelles pour le proposer
+        function refreshRevisionAvailability() {
+            const btn = document.getElementById('btn-revision');
+            const hint = document.getElementById('revision-hint-text');
+            if (!btn) return;
+            fetch(`/api/profile/${encodeURIComponent(playerPseudo)}/weak-flags`)
+                .then(res => res.json())
+                .then(data => {
+                    const available = !!(data.countryIds && data.countryIds.length >= 3);
+                    btn.disabled = !available;
+                    if (hint) {
+                        hint.textContent = available
+                            ? "Rejouez uniquement les drapeaux sur lesquels vous vous trompez le plus."
+                            : "Débloqué après quelques parties jouées (pour identifier vos drapeaux faibles).";
+                    }
+                })
+                .catch(() => {});
+        }
+
         generateModesMenu();
+        refreshRevisionAvailability();
         socket.emit('login', { pseudo: playerPseudo, token: authToken });
         
         // Affichage initial de la sidebar (Menu)
@@ -703,6 +850,7 @@
             document.getElementById('sidebar-menu').style.display = 'block';
             clearInterval(timerInterval);
             socket.emit('login', { pseudo: playerPseudo, token: authToken });
+            refreshRevisionAvailability();
             pushHistory();
         }
 
@@ -787,13 +935,13 @@
                 .then(res => res.json())
                 .then(data => {
                     if (!data.countryIds || data.countryIds.length < 3) {
-                        alert("Pas encore assez de statistiques pour un mode révision : jouez quelques parties d'abord !");
+                        showAlertModal("Pas encore assez de statistiques pour un mode révision : jouez quelques parties d'abord !");
                         return;
                     }
                     overrideCountryIds = data.countryIds;
                     openLobby('revision_999999', 'Révision ciblée', 999999);
                 })
-                .catch(() => alert("Impossible de charger vos statistiques de révision."));
+                .catch(() => showAlertModal("Impossible de charger vos statistiques de révision."));
         }
 
         function openLobby(modeId, filterContinent, durationMin) {
@@ -868,14 +1016,20 @@
         });
 
         function resetRun() {
-            if(confirm("Confirmer l'arrêt de la session en cours ? Votre score actuel sera enregistré et vos résultats finaux vont s'afficher.")) {
-                socket.emit('reset_run', { pseudo: playerPseudo, mode: currentMode });
-                myEndTime = Date.now();
-                isGameFinished = true;
-                setGameActive(false);
-                otherPlayers = [{ pseudo: playerPseudo, score: guessedCountries.size, end_time: Date.now(), online: true }];
-                updateLeaderboardUI();
-            }
+            showConfirmModal({
+                title: 'Arrêter la session',
+                message: "Confirmer l'arrêt de la session en cours ? Votre score actuel sera enregistré et vos résultats finaux vont s'afficher.",
+                confirmLabel: 'Arrêter la session',
+                danger: true,
+                onConfirm: () => {
+                    socket.emit('reset_run', { pseudo: playerPseudo, mode: currentMode });
+                    myEndTime = Date.now();
+                    isGameFinished = true;
+                    setGameActive(false);
+                    otherPlayers = [{ pseudo: playerPseudo, score: guessedCountries.size, end_time: Date.now(), online: true }];
+                    updateLeaderboardUI();
+                }
+            });
         }
 
         socket.on('run_reset', () => {
@@ -1219,13 +1373,11 @@
             if (authToken) {
                 // La session a expiré ou est invalide : il faut se reconnecter pour sauvegarder la partie
                 localStorage.removeItem('flagGameToken');
-                alert("Votre session a expiré. Veuillez vous reconnecter pour sauvegarder votre progression.");
-                location.reload();
+                showAlertModal("Votre session a expiré. Veuillez vous reconnecter pour sauvegarder votre progression.", '', () => location.reload());
             } else if (pseudo === playerPseudo) {
                 // Ce pseudo correspond à un compte existant : on en choisit un autre, libre
                 localStorage.setItem('flagGamePseudo', generateGuestPseudo());
-                alert("Ce pseudo est associé à un compte existant. Un nouveau pseudo invité vous a été attribué.");
-                location.reload();
+                showAlertModal("Ce pseudo est associé à un compte existant. Un nouveau pseudo invité vous a été attribué.", '', () => location.reload());
             }
         });
 
