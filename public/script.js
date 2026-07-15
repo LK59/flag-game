@@ -1,5 +1,6 @@
         // 196 PAYS AVEC NOMS ALTERNATIFS
         const allCountries = window.allCountries || [];
+        const DIACRITICS_REGEX_JS = new RegExp('[\\u0300-\\u036f]', 'g');
 
         // GESTION SESSION
         let authToken = localStorage.getItem("flagGameToken");
@@ -35,7 +36,7 @@
             return `${m}:${String(s).padStart(2, '0')}`;
         }
 
-        const REGION_LABELS = { monde: "Monde", europe: "Europe", afrique: "Afrique", asie: "Asie", amerique: "Amérique", oceanie: "Océanie" };
+        const REGION_LABELS = { monde: "Monde", europe: "Europe", afrique: "Afrique", asie: "Asie", amerique: "Amérique", oceanie: "Océanie", revision: "Révision ciblée", duel: "Duel" };
 
         function formatModeLabel(mode) {
             const parts = mode.split('_');
@@ -202,17 +203,19 @@
 
         function openProfile(username) {
             const content = document.getElementById('profile-modal-content');
-            content.innerHTML = "Chargement...";
+            content.innerHTML = '<div class="spinner-wrap"><span class="spinner"></span> Chargement…</div>';
             document.getElementById('profile-modal').style.display = 'flex';
             pushHistory({ modal: 'profile', modalUser: username });
 
-            fetch('/api/profile/' + encodeURIComponent(username))
-                .then(res => res.json())
-                .then(data => renderProfile(data))
+            Promise.all([
+                fetch('/api/profile/' + encodeURIComponent(username)).then(res => res.json()),
+                fetch('/api/profile/' + encodeURIComponent(username) + '/history').then(res => res.ok ? res.json() : [])
+            ])
+                .then(([profile, history]) => renderProfile(profile, history))
                 .catch(() => { content.innerHTML = "Impossible de charger ce profil."; });
         }
 
-        function renderProfile(data) {
+        function renderProfile(data, history) {
             const content = document.getElementById('profile-modal-content');
             const isMe = !!(authToken && data.username === playerPseudo);
 
@@ -236,38 +239,55 @@
                         </div>`;
                 });
             } else {
-                statsHtml = '<p style="color:#95a5a6;">Aucune partie jouée pour le moment.</p>';
+                statsHtml = '<p class="admin-empty">Aucune partie jouée pour le moment.</p>';
+            }
+
+            let historyHtml = '';
+            if (history && history.length > 0) {
+                historyHtml += `<h3 class="profile-section-title">📈 Historique récent</h3><div class="history-table">`;
+                history.forEach(h => {
+                    const date = new Date(h.played_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+                    historyHtml += `
+                        <div class="history-row">
+                            <div>${date}</div>
+                            <div>${formatModeLabel(h.mode)}</div>
+                            <div class="history-score">${h.score} pts</div>
+                            <div>${formatDuration(h.duration_seconds)}</div>
+                        </div>`;
+                });
+                historyHtml += `</div>`;
             }
 
             let html = `
                 <div class="profile-header">
                     ${avatarHtml}
                     <div>
-                        <h2 style="margin:0;">${escapeHtml(data.username)}</h2>
+                        <h2 class="profile-name">${escapeHtml(data.username)}</h2>
                         ${data.description ? `<div class="profile-description">${escapeHtml(data.description)}</div>` : ''}
                     </div>
                 </div>
                 ${statsHtml}
+                ${historyHtml}
             `;
 
             if (isMe) {
                 html += `
                     <div class="profile-edit-section">
-                        <h3 style="margin-top:0;">Modifier mon profil</h3>
+                        <h3 class="profile-section-title">Modifier mon profil</h3>
                         <textarea id="profile-description-input" placeholder="Décrivez-vous en quelques mots...">${escapeHtml(data.description || '')}</textarea>
-                        <button class="btn-primary" onclick="saveDescription()" style="margin-top:8px;">Enregistrer la description</button>
-                        <div style="margin-top:12px;">
+                        <button class="btn-primary mt-8" onclick="saveDescription()">Enregistrer la description</button>
+                        <div class="mt-12">
                             <input type="file" id="profile-avatar-input" accept="image/png,image/jpeg,image/webp,image/gif">
-                            <button class="btn-primary" onclick="uploadAvatar()" style="margin-top:8px;">Changer la photo</button>
+                            <button class="btn-primary mt-8" onclick="uploadAvatar()">Changer la photo</button>
                         </div>
                     </div>
                     <div class="profile-edit-section">
-                        <h3 style="margin-top:0;">Changer mon mot de passe</h3>
+                        <h3 class="profile-section-title">Changer mon mot de passe</h3>
                         <input type="password" id="profile-current-password" placeholder="Mot de passe actuel" autocomplete="current-password">
                         <input type="password" id="profile-new-password" placeholder="Nouveau mot de passe (6 caractères min.)" autocomplete="new-password">
-                        <div id="profile-password-error" class="modal-error" style="display:none;"></div>
-                        <div id="profile-password-success" class="modal-success" style="display:none;"></div>
-                        <button class="btn-primary" onclick="changePassword()" style="margin-top:8px;">Mettre à jour le mot de passe</button>
+                        <div id="profile-password-error" class="modal-error"></div>
+                        <div id="profile-password-success" class="modal-success"></div>
+                        <button class="btn-primary mt-8" onclick="changePassword()">Mettre à jour le mot de passe</button>
                     </div>
                 `;
             }
@@ -357,7 +377,7 @@
 
         function loadAdminPanel() {
             const content = document.getElementById('admin-modal-content');
-            content.innerHTML = "Chargement...";
+            content.innerHTML = '<div class="spinner-wrap"><span class="spinner"></span> Chargement…</div>';
 
             Promise.all([
                 adminApiFetch('/api/admin/password-reset-requests'),
@@ -373,7 +393,7 @@
         }
 
         function renderAdminPanel(resetRequests, users, players) {
-            let html = '<h2 style="margin-top:0;">🛠️ Panneau d\'administration</h2>';
+            let html = '<h2 class="profile-section-title">🛠️ Panneau d\'administration</h2>';
 
             // Demandes de réinitialisation de mot de passe
             html += '<h3>🔑 Demandes de réinitialisation de mot de passe</h3>';
@@ -389,7 +409,7 @@
                                 <span class="admin-meta">demandé le ${date}</span>
                             </div>
                             <div class="admin-row-actions">
-                                <input type="text" id="reset-pw-${escapeHtml(r.username)}" placeholder="Nouveau mot de passe" style="width:160px;">
+                                <input type="text" id="reset-pw-${escapeHtml(r.username)}" placeholder="Nouveau mot de passe" class="admin-input-md">
                                 <button class="btn-primary" data-username="${escapeHtml(r.username)}" onclick="adminResolveReset(this.dataset.username)">Valider</button>
                                 <button class="btn-default" data-username="${escapeHtml(r.username)}" onclick="adminRejectReset(this.dataset.username)">Rejeter</button>
                             </div>
@@ -416,7 +436,7 @@
                                 <span class="admin-meta">inscrit le ${created}</span>
                             </div>
                             <div class="admin-row-actions">
-                                <input type="text" id="rename-${escapeHtml(u.username)}" value="${escapeHtml(u.username)}" style="width:140px;">
+                                <input type="text" id="rename-${escapeHtml(u.username)}" value="${escapeHtml(u.username)}" class="admin-input-sm">
                                 <button class="btn-default" data-username="${escapeHtml(u.username)}" onclick="adminRenameUser(this.dataset.username)">Renommer</button>
                                 <button class="btn-default" data-username="${escapeHtml(u.username)}" data-role="${nextRole}" onclick="adminSetRole(this.dataset.username, this.dataset.role)">${roleActionLabel}</button>
                             </div>
@@ -455,7 +475,7 @@
             // Zone dangereuse
             html += `
                 <div class="admin-danger-zone">
-                    <h3 style="margin-top:0; color:var(--danger);">⚠️ Zone dangereuse</h3>
+                    <h3 class="profile-section-title admin-danger-title">⚠️ Zone dangereuse</h3>
                     <p class="admin-empty">Efface définitivement tous les scores et statistiques de tous les joueurs (les comptes utilisateurs sont conservés).</p>
                     <button class="btn-danger" onclick="adminNukeDB()">Tout effacer</button>
                 </div>`;
@@ -615,6 +635,7 @@
         const socket = io();
 
         let currentDuration = 0;
+        let overrideCountryIds = null; // pays imposés (mode révision / duel) au lieu du filtre par continent
         let activeCountries = [];
         let guessedCountries = new Set();
         let selectedCountryId = null;
@@ -627,22 +648,31 @@
         function generateModesMenu() {
             const container = document.getElementById("modes-container");
             const regions = ["Monde", "Europe", "Afrique", "Asie", "Amérique", "Océanie"];
-            const durations = [3, 10, 20, 999999]; 
+            const durations = [3, 10, 20, 999999];
+
+            let html = `<div class="category-container region-revision">
+                            <div class="category-title">🎯 Révision ciblée</div>
+                            <div class="revision-hint">Rejouez uniquement les drapeaux sur lesquels vous vous trompez le plus.</div>
+                            <div class="duration-buttons">
+                                <button class="btn-mode" onclick="openRevisionMode()">Réviser mes drapeaux faibles</button>
+                            </div>
+                        </div>`;
 
             regions.forEach(region => {
-                let html = `<div class="category-container">
+                const slug = region.toLowerCase().normalize("NFD").replace(DIACRITICS_REGEX_JS, "");
+                html += `<div class="category-container region-${slug}">
                                 <div class="category-title">Zone : ${region}</div>
                                 <div class="duration-buttons">`;
                 durations.forEach(min => {
-                    const modeId = `${region.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")}_${min}`;
+                    const modeId = `${slug}_${min}`;
                     const label = min === 999999 ? "Infini (Practice)" : `${min} minutes`;
                     html += `<button class="btn-mode" onclick="openLobby('${modeId}', '${region}', ${min})">${label}</button>`;
                 });
                 html += `</div></div>`;
-                container.innerHTML += html;
             });
+            container.innerHTML = html;
         }
-        
+
         generateModesMenu();
         socket.emit('login', { pseudo: playerPseudo, token: authToken });
         
@@ -690,20 +720,21 @@
                 let activeHtml = '';
                 activeSessions.forEach(session => {
                     const parts = session.mode.split('_');
-                    const regionName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+                    const regionName = REGION_LABELS[parts[0]] || (parts[0].charAt(0).toUpperCase() + parts[0].slice(1));
                     const durationStr = parts[1] === "999999" ? "Infini" : `${parts[1]} min`;
                     const minLeft = parts[1] === "999999" ? "∞" : (Math.floor((session.end_time - now) / 60000) + 1) + " min";
-                    
+                    const resumeCall = parts[0] === 'revision' ? 'openRevisionMode()' : `openLobby('${session.mode}', '${regionName}', ${parts[1]})`;
+
                     activeHtml += `
-                        <div class="active-session-card" onclick="openLobby('${session.mode}', '${regionName}', ${parts[1]})">
+                        <div class="active-session-card" onclick="${resumeCall}">
                             <div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                    <h3 style="margin:0; font-size: 16px; color: var(--primary);"><span class="pulse-indicator"></span> ${regionName} (${durationStr})</h3>
+                                <div class="active-session-header">
+                                    <h3><span class="pulse-indicator"></span> ${regionName} (${durationStr})</h3>
                                 </div>
-                                <p style="margin: 0 0 8px 0; font-size: 14px; color: #7f8c8d;">Score : <strong style="color: var(--secondary);">${session.score} pts</strong></p>
-                                <p style="margin: 0; font-size: 14px; color: #7f8c8d;">Temps restant : ${minLeft}</p>
+                                <p class="active-session-line">Score : <strong class="score-value">${session.score} pts</strong></p>
+                                <p class="active-session-line">Temps restant : ${minLeft}</p>
                             </div>
-                            <button class="btn-primary" style="width: 100%; margin-top: 16px; padding: 8px;">Reprendre</button>
+                            <button class="btn-primary active-session-resume">Reprendre</button>
                         </div>
                     `;
                 });
@@ -727,18 +758,22 @@
                 .map(([pseudo, stats]) => ({ pseudo, ...stats }))
                 .sort((a, b) => b.score - a.score);
 
-            let html = '<ul style="margin-top: 10px;">';
+            let html = '<ul class="leaderboard-list">';
             sortedPlayers.slice(0, 15).forEach((p, i) => {
                 const isMe = p.pseudo === playerPseudo;
                 const dotClass = p.online ? 'status-dot online' : 'status-dot';
+                const rankMarker = i === 0
+                    ? '<span class="stamp-badge" title="1er au classement général">1er</span>'
+                    : `<span class="rank-index">#${i + 1}</span>`;
                 html += `
-                    <li ${isMe ? 'style="background:#f0f8ff; font-weight:600; padding: 10px; border-radius: 6px; margin-bottom: 4px;"' : ''}>
+                    <li class="${isMe ? 'li-me' : ''}">
                         <span class="player-info">
-                            <span style="opacity:0.5; margin-right:12px; font-family: monospace;">#${i+1}</span>
+                            ${rankMarker}
                             <span class="${dotClass}"></span>
                             <span class="profile-link" data-pseudo="${escapeHtml(p.pseudo)}" onclick="openProfile(this.dataset.pseudo)">${escapeHtml(p.pseudo)}</span>
+                            ${challengeButtonHtml(p)}
                         </span>
-                        <span style="font-weight:700; color:var(--secondary);">${p.score}</span>
+                        <span class="score-value">${p.score}</span>
                     </li>`;
             });
             html += '</ul>';
@@ -746,6 +781,21 @@
         });
 
         // OUVERTURE D'UNE SESSION DE JEU
+        // Mode révision : rejoue uniquement les drapeaux où le taux personnel de réussite est le plus faible
+        function openRevisionMode() {
+            fetch(`/api/profile/${encodeURIComponent(playerPseudo)}/weak-flags`)
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.countryIds || data.countryIds.length < 3) {
+                        alert("Pas encore assez de statistiques pour un mode révision : jouez quelques parties d'abord !");
+                        return;
+                    }
+                    overrideCountryIds = data.countryIds;
+                    openLobby('revision_999999', 'Révision ciblée', 999999);
+                })
+                .catch(() => alert("Impossible de charger vos statistiques de révision."));
+        }
+
         function openLobby(modeId, filterContinent, durationMin) {
             currentMode = modeId;
             currentDuration = durationMin;
@@ -762,10 +812,15 @@
             const durationLabel = durationMin === 999999 ? "Infini" : `${durationMin} min`;
             document.getElementById('current-mode-title').textContent = `Module : ${filterContinent} (${durationLabel})`;
 
-            if(filterContinent === 'Monde' || filterContinent.toLowerCase() === 'monde') {
+            if (overrideCountryIds) {
+                const ids = overrideCountryIds;
+                overrideCountryIds = null;
+                activeCountries = ids.map(id => allCountries.find(c => c.id === id)).filter(Boolean);
+            } else if (filterContinent === 'Monde' || filterContinent.toLowerCase() === 'monde') {
                 activeCountries = [...allCountries];
             } else {
-                activeCountries = allCountries.filter(c => c.continent.toLowerCase() === filterContinent.toLowerCase());
+                const filtered = allCountries.filter(c => c.continent.toLowerCase() === filterContinent.toLowerCase());
+                activeCountries = filtered.length > 0 ? filtered : [...allCountries];
             }
             activeCountries.sort(() => Math.random() - 0.5);
 
@@ -1105,17 +1160,22 @@
                     timerText = "En attente";
                 }
 
+                const rankMarker = index === 0
+                    ? '<span class="stamp-badge" title="1er sur ce module">1er</span>'
+                    : `<span class="rank-index">#${index + 1}</span>`;
+
                 list.innerHTML += `
-                    <li ${isMe ? 'style="background:#f0f8ff; font-weight:600; padding: 10px; border-radius: 6px; margin-bottom: 4px;"' : ''}>
+                    <li class="${isMe ? 'li-me' : ''}">
                         <span class="player-info">
-                            <span style="opacity:0.5; margin-right:12px; font-family: monospace;">#${index + 1}</span>
+                            ${rankMarker}
                             <span class="${dotClass}"></span>
                             <span class="profile-link" data-pseudo="${escapeHtml(p.pseudo)}" onclick="openProfile(this.dataset.pseudo)">${escapeHtml(p.pseudo)}</span>
+                            ${challengeButtonHtml(p)}
                         </span>
-                        <span style="text-align: right;">
-                            <div style="font-weight:700; color:var(--secondary);">${p.score} pts</div>
+                        <span class="player-score-block">
+                            <div class="score-value">${p.score} pts</div>
                             <div class="player-best-score">Record : ${p.best_score || 0} pts${p.best_time_seconds != null ? ' en ' + formatDuration(p.best_time_seconds) : ''}</div>
-                            <div class="${timerClass}" style="margin:0; font-size:11px;">${timerText}</div>
+                            <div class="${timerClass}">${timerText}</div>
                         </span>
                     </li>
                 `;
@@ -1131,14 +1191,17 @@
                 if (myEndTime > now) {
                     if (myEndTime > now + 50000000000) {
                         mainTimer.textContent = "∞";
+                        mainTimer.classList.remove('timer-low');
                     } else {
                         const secLeft = Math.floor((myEndTime - now) / 1000);
                         const m = String(Math.floor(secLeft / 60)).padStart(2, '0');
                         const s = String(secLeft % 60).padStart(2, '0');
                         mainTimer.textContent = `${m}:${s}`;
+                        mainTimer.classList.toggle('timer-low', secLeft <= 10);
                     }
                 } else {
                     mainTimer.textContent = "Temps imparti écoulé";
+                    mainTimer.classList.remove('timer-low');
                     isGameFinished = true;
                     setGameActive(false);
                 }
@@ -1164,5 +1227,56 @@
                 alert("Ce pseudo est associé à un compte existant. Un nouveau pseudo invité vous a été attribué.");
                 location.reload();
             }
+        });
+
+        // --- DÉFI / DUEL ENTRE JOUEURS EN LIGNE ---
+
+        function challengeButtonHtml(p) {
+            if (!p.online || p.pseudo === playerPseudo) return '';
+            return `<button class="challenge-btn" title="Défier ${escapeHtml(p.pseudo)} en duel" data-pseudo="${escapeHtml(p.pseudo)}" onclick="event.stopPropagation(); challengePlayer(this.dataset.pseudo)">⚔️</button>`;
+        }
+
+        function challengePlayer(pseudo) {
+            socket.emit('challenge_invite', { toPseudo: pseudo });
+            showChallengeToast(`Défi envoyé à ${pseudo}. En attente de sa réponse…`, []);
+        }
+
+        function showChallengeToast(message, actions) {
+            document.querySelectorAll('.challenge-toast').forEach(t => t.remove());
+            const toast = document.createElement('div');
+            toast.className = 'challenge-toast';
+            toast.innerHTML = `<span>⚔️ ${message}</span>`;
+            actions.forEach(({ label, cls, onClick }) => {
+                const btn = document.createElement('button');
+                btn.className = cls;
+                btn.textContent = label;
+                btn.onclick = () => { onClick(); toast.remove(); };
+                toast.appendChild(btn);
+            });
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 20000);
+        }
+
+        socket.on('challenge_received', ({ fromPseudo }) => {
+            showChallengeToast(`<strong>${escapeHtml(fromPseudo)}</strong> vous défie en duel (3 min) !`, [
+                { label: 'Accepter', cls: 'btn-primary', onClick: () => socket.emit('challenge_respond', { toPseudo: fromPseudo, accepted: true }) },
+                { label: 'Refuser', cls: 'btn-default', onClick: () => socket.emit('challenge_respond', { toPseudo: fromPseudo, accepted: false }) }
+            ]);
+        });
+
+        socket.on('challenge_failed', ({ reason }) => {
+            showChallengeToast(reason || "Impossible d'envoyer le défi.", []);
+        });
+
+        socket.on('challenge_declined', ({ fromPseudo }) => {
+            showChallengeToast(`${escapeHtml(fromPseudo)} a refusé votre défi.`, []);
+        });
+
+        socket.on('duel_start', ({ mode, countryIds, durationMinutes, opponent }) => {
+            document.querySelectorAll('.challenge-toast').forEach(t => t.remove());
+            overrideCountryIds = countryIds;
+            openLobby(mode, 'Duel', durationMinutes);
+            setTimeout(() => startRun(), 250);
+            showChallengeToast(`Duel contre <strong>${escapeHtml(opponent)}</strong> — c'est parti !`, []);
         });
 

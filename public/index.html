@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flag Game</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="countries.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="style.css">
@@ -12,20 +15,20 @@
 
     <div class="header-top">
         <div>
-            <h1 style="margin: 0; font-size: 24px;">🌍 FlagsTracker</h1>
-            <div id="display-pseudo" style="color: #7f8c8d; font-size: 14px; font-weight: 500; margin-top: 4px;"></div>
+            <h1 class="app-title"><span class="flag-emoji">🌍</span> FlagsTracker</h1>
+            <div id="display-pseudo"></div>
         </div>
-        <div id="account-area" style="display: flex; gap: 8px; align-items: center;"></div>
+        <div id="account-area"></div>
     </div>
 
     <div class="app-container">
-        
+
         <div class="sidebar">
-            
+
             <div id="sidebar-menu">
                 <div class="leaderboard-title">🏆 Classement Général</div>
-                <div style="font-size: 12px; color: #95a5a6; margin-bottom: 15px; text-align: left;">Total de tous les scores cumulés.</div>
-                <div id="global-leaderboard-side">Chargement...</div>
+                <div class="leaderboard-hint">Total de tous les scores cumulés.</div>
+                <div id="global-leaderboard-side" class="spinner-wrap"><span class="spinner"></span> Chargement du classement…</div>
             </div>
 
             <div id="sidebar-game">
@@ -39,9 +42,9 @@
         <div class="main-content">
 
             <div id="menu-screen">
-                <div id="active-sessions-container" style="display: none;">
-                    <h2 style="color: var(--secondary); margin-bottom: 16px;">▶ Sessions en cours</h2>
-                    <div id="active-sessions-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;"></div>
+                <div id="active-sessions-container">
+                    <h2 class="section-title-accent">▶ Sessions en cours</h2>
+                    <div id="active-sessions-list" class="active-sessions-grid"></div>
                 </div>
 
                 <h2>📚 Sélection du programme</h2>
@@ -55,23 +58,23 @@
                         <div class="score-display" id="score-display">Score : 0 / 0</div>
                         <div>
                             <button id="btn-start" class="btn-primary" onclick="startRun()">Démarrer la session</button>
-                            <button id="btn-reset" class="btn-danger" style="display: none;" onclick="resetRun()">Arrêter / Réinitialiser</button>
+                            <button id="btn-reset" class="btn-danger" onclick="resetRun()">Arrêter / Réinitialiser</button>
                         </div>
                         <div class="timer-display" id="main-timer">00:00</div>
                     </div>
-                    
-                    <div style="margin-bottom: 12px; font-size: 14px; color: #7f8c8d; font-weight: 600;">Identifiez le pays encadré en bleu.</div>
+
+                    <div class="instruction-text">Identifiez le pays encadré en jaune.</div>
                     <input type="text" id="guess-input" placeholder="Sélectionnez un drapeau..." disabled autocomplete="off">
                 </div>
-                
+
                 <div class="grid-container">
                     <div id="lock-overlay">En attente de démarrage</div>
                     <div class="grid" id="flags-grid"></div>
                 </div>
 
-                <div id="results-container" class="results-container" style="display: none;">
+                <div id="results-container" class="results-container">
                     <h2>📊 Statistiques de réussite par drapeau</h2>
-                    <p style="margin-top: -8px; margin-bottom: 20px; font-size: 13px; color: #95a5a6;">Drapeaux classés du plus facile au plus difficile, avec votre taux de réussite personnel.</p>
+                    <p class="results-subtitle">Drapeaux classés du plus facile au plus difficile, avec votre taux de réussite personnel.</p>
                     <div class="result-row result-header">
                         <div></div>
                         <div>Pays</div>
@@ -86,42 +89,42 @@
     </div>
 
     <!-- Modal générique : Connexion / Inscription -->
-    <div id="auth-modal" class="modal-overlay" style="display: none;" onclick="if(event.target===this) document.getElementById('auth-cancel-btn').click()">
+    <div id="auth-modal" class="modal-overlay" onclick="if(event.target===this) document.getElementById('auth-cancel-btn').click()">
         <div class="modal-box">
             <h2 id="auth-modal-title">Connexion</h2>
-            <div id="auth-modal-intro" class="modal-error" style="display:none; background:#eaf4ff; color:var(--primary); border-color:#bee3ff;"></div>
-            <div id="auth-modal-error" class="modal-error" style="display:none;"></div>
+            <div id="auth-modal-intro" class="modal-error modal-info"></div>
+            <div id="auth-modal-error" class="modal-error"></div>
             <form onsubmit="submitAuth(); return false;">
                 <input type="text" id="auth-username" placeholder="Nom d'utilisateur" autocomplete="username">
                 <input type="password" id="auth-password" placeholder="Mot de passe" autocomplete="current-password">
-                <p id="auth-forgot-wrap" style="text-align:right; font-size: 12px; margin: -8px 0 12px 0;">
+                <p id="auth-forgot-wrap">
                     <a href="#" onclick="setAuthMode('forgot'); return false;">Mot de passe oublié ?</a>
                 </p>
-                <button type="submit" class="btn-primary" id="auth-submit-btn" style="width:100%; margin-top: 8px;">Se connecter</button>
+                <button type="submit" class="btn-primary" id="auth-submit-btn">Se connecter</button>
             </form>
-            <p id="auth-toggle-wrap" style="text-align:center; font-size: 13px; margin-top: 16px;">
+            <p id="auth-toggle-wrap">
                 <a href="#" id="auth-toggle-link" onclick="toggleAuthMode(); return false;">Pas de compte ? Inscrivez-vous</a>
             </p>
-            <p id="auth-back-wrap" style="text-align:center; font-size: 13px; margin-top: 16px; display:none;">
+            <p id="auth-back-wrap">
                 <a href="#" onclick="setAuthMode('login'); return false;">Retour à la connexion</a>
             </p>
-            <button class="btn-default" type="button" id="auth-cancel-btn" onclick="closeModal('auth-modal')" style="margin-top: 8px; margin-bottom: 0;">Annuler</button>
+            <button class="btn-default" type="button" id="auth-cancel-btn" onclick="closeModal('auth-modal')">Annuler</button>
         </div>
     </div>
 
     <!-- Modal générique : Profil joueur -->
-    <div id="profile-modal" class="modal-overlay" style="display: none;" onclick="if(event.target===this) closeModal('profile-modal')">
+    <div id="profile-modal" class="modal-overlay" onclick="if(event.target===this) closeModal('profile-modal')">
         <div class="modal-box">
-            <div id="profile-modal-content">Chargement...</div>
-            <button class="btn-default" onclick="closeModal('profile-modal')" style="margin-top: 16px; margin-bottom: 0;">Fermer</button>
+            <div id="profile-modal-content" class="spinner-wrap"><span class="spinner"></span> Chargement…</div>
+            <button class="btn-default modal-close-btn" onclick="closeModal('profile-modal')">Fermer</button>
         </div>
     </div>
 
     <!-- Modal générique : Panneau d'administration -->
-    <div id="admin-modal" class="modal-overlay" style="display: none;" onclick="if(event.target===this) closeModal('admin-modal')">
+    <div id="admin-modal" class="modal-overlay" onclick="if(event.target===this) closeModal('admin-modal')">
         <div class="modal-box modal-wide">
-            <div id="admin-modal-content">Chargement...</div>
-            <button class="btn-default" onclick="closeModal('admin-modal')" style="margin-top: 16px; margin-bottom: 0;">Fermer</button>
+            <div id="admin-modal-content" class="spinner-wrap"><span class="spinner"></span> Chargement…</div>
+            <button class="btn-default modal-close-btn" onclick="closeModal('admin-modal')">Fermer</button>
         </div>
     </div>
 

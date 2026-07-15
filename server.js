@@ -159,9 +159,20 @@ db.serialize(() => {
         username TEXT PRIMARY KEY,
         requested_at INTEGER DEFAULT 0
     )`);
+
+    // Historique des parties terminées, pour afficher une progression dans le temps
+    db.run(`CREATE TABLE IF NOT EXISTS score_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pseudo TEXT,
+        mode TEXT,
+        score INTEGER,
+        duration_seconds INTEGER,
+        played_at INTEGER
+    )`);
 });
 
 const onlineUsers = new Map();
+const socketsByPseudo = new Map();
 
 function broadcastModeLeaderboard(mode) {
     db.all(`SELECT pseudo, score, best_score, best_time_seconds, last_duration_seconds, end_time
@@ -246,6 +257,7 @@ io.on('connection', (socket) => {
         const token = (data && typeof data === 'object') ? data.token : null;
         if (!pseudo) return;
         onlineUsers.set(socket.id, pseudo);
+        socketsByPseudo.set(pseudo, socket.id);
 
         if (!token) {
             socket.data.authedUsername = null;
@@ -401,13 +413,57 @@ io.on('connection', (socket) => {
                         broadcastModeLeaderboard(mode);
                         broadcastGlobalLeaderboards();
                     });
+
+                db.run("INSERT INTO score_history (pseudo, mode, score, duration_seconds, played_at) VALUES (?, ?, ?, ?, ?)",
+                    [pseudo, mode, row.score, duration, now]);
             });
         });
     });
 
     socket.on('disconnect', () => {
+        const pseudo = onlineUsers.get(socket.id);
+        if (pseudo && socketsByPseudo.get(pseudo) === socket.id) socketsByPseudo.delete(pseudo);
         onlineUsers.delete(socket.id);
         socket.rooms.forEach(room => broadcastModeLeaderboard(room));
+    });
+
+    // --- DÉFI / DUEL ENTRE JOUEURS EN LIGNE ---
+
+    socket.on('challenge_invite', (data) => {
+        const fromPseudo = onlineUsers.get(socket.id);
+        const toPseudo = data && data.toPseudo;
+        if (!fromPseudo || !toPseudo || toPseudo === fromPseudo) return;
+
+        const targetSocketId = socketsByPseudo.get(toPseudo);
+        if (!targetSocketId) {
+            return socket.emit('challenge_failed', { toPseudo, reason: "Ce joueur n'est plus en ligne." });
+        }
+        io.to(targetSocketId).emit('challenge_received', { fromPseudo });
+    });
+
+    socket.on('challenge_respond', (data) => {
+        const respondingPseudo = onlineUsers.get(socket.id);
+        const fromPseudo = data && data.toPseudo; // pseudo de celui qui a lancé le défi
+        const accepted = !!(data && data.accepted);
+        if (!respondingPseudo || !fromPseudo) return;
+
+        const challengerSocketId = socketsByPseudo.get(fromPseudo);
+        if (!challengerSocketId) return;
+
+        if (!accepted) {
+            return io.to(challengerSocketId).emit('challenge_declined', { fromPseudo: respondingPseudo });
+        }
+
+        const duelId = crypto.randomBytes(4).toString('hex');
+        const durationMinutes = 3;
+        const mode = `duel_${durationMinutes}_${duelId}`;
+        const shuffled = [...allCountries].sort(() => Math.random() - 0.5);
+        const countryIds = shuffled.slice(0, 25).map(c => c.id);
+
+        const payload = { mode, countryIds, durationMinutes };
+        const responderSocketId = socket.id;
+        io.to(challengerSocketId).emit('duel_start', { ...payload, opponent: respondingPseudo });
+        io.to(responderSocketId).emit('duel_start', { ...payload, opponent: fromPseudo });
     });
 });
 
@@ -556,6 +612,37 @@ app.get('/api/profile/:username', (req, res) => {
             });
         });
     });
+});
+
+// Drapeaux les plus faibles d'un joueur (utilisé par le mode révision), tous modes confondus
+app.get('/api/profile/:username/weak-flags', (req, res) => {
+    const { username } = req.params;
+    const MIN_ATTEMPTS = 2;
+    const MAX_RESULTS = 15;
+
+    db.all(`SELECT country_id, SUM(attempts) AS totalAttempts, SUM(found) AS totalFound
+            FROM flag_stats WHERE pseudo = ? GROUP BY country_id`, [username], (err, rows) => {
+        if (err) return res.status(500).json({ error: "Erreur serveur." });
+
+        const countryIds = rows
+            .filter(r => r.totalAttempts >= MIN_ATTEMPTS)
+            .map(r => ({ country_id: r.country_id, percent: r.totalFound / r.totalAttempts }))
+            .sort((a, b) => a.percent - b.percent)
+            .slice(0, MAX_RESULTS)
+            .map(r => r.country_id);
+
+        res.json({ countryIds });
+    });
+});
+
+// Historique des dernières parties terminées d'un joueur (progression dans le temps)
+app.get('/api/profile/:username/history', (req, res) => {
+    const { username } = req.params;
+    db.all("SELECT mode, score, duration_seconds, played_at FROM score_history WHERE pseudo = ? ORDER BY played_at DESC LIMIT 15",
+        [username], (err, rows) => {
+            if (err) return res.status(500).json({ error: "Erreur serveur." });
+            res.json(rows || []);
+        });
 });
 
 // Mise à jour de la description du profil (utilisateur connecté uniquement)
