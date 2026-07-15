@@ -1,0 +1,10 @@
+node_modules/
+
+# Données runtime (comptes, scores, avatars) : jamais versionnées
+data/
+
+# Config réelle de déploiement (contient le vrai ADMIN_USERNAME) : voir docker-compose.example.yml
+docker-compose.yml
+
+.env
+.env.*

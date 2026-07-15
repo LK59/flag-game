@@ -1,0 +1,21 @@
+services:
+  flags-game:
+    build: .
+    container_name: flags-game
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Europe/Paris
+      # Pseudo qui devient automatiquement administrateur (obligatoire, pas de valeur par défaut).
+      # Si absente, le conteneur refuse de démarrer et l'explique dans ses logs.
+      - ADMIN_USERNAME=your_admin_username
+      # - PORT=3000
+    networks:
+      - web
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+
+networks:
+  web:
+    external: true

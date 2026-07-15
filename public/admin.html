@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Administration - Drapeaux</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8f9fa; color: #2c3e50; padding: 20px; max-width: 1000px; margin: 0 auto; }
+        h1 { border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #e1e4e8; }
+        input[type="password"] { padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; outline: none; }
+        button { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; transition: opacity 0.2s; }
+        button:hover { opacity: 0.9; }
+        .btn-blue { background: #3498db; }
+        .btn-orange { background: #e67e22; }
+        .btn-red { background: #e74c3c; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background-color: #f1f3f5; color: #7f8c8d; font-weight: 600; }
+        tr:hover { background-color: #fdfdfd; }
+        .actions button { margin-right: 5px; padding: 6px 10px; font-size: 12px; }
+        .status-active { color: #2ecc71; font-weight: bold; }
+        .status-ended { color: #95a5a6; }
+    </style>
+</head>
+<body>
+
+    <h1>Panneau d'Administration</h1>
+
+    <div class="panel" id="login-panel">
+        <p>Veuillez entrer le mot de passe administrateur :</p>
+        <input type="password" id="admin-pass" placeholder="Mot de passe...">
+        <button class="btn-blue" onclick="loadPlayers()">Se connecter</button>
+    </div>
+
+    <div class="panel" id="admin-content" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Liste des sessions</h2>
+            <button class="btn-red" onclick="nukeDB()">TOUT EFFACER</button>
+        </div>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Pseudo</th>
+                    <th>Mode</th>
+                    <th>Score</th>
+                    <th>Statut</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="player-list">
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        let password = "";
+
+        function loadPlayers() {
+            password = document.getElementById('admin-pass').value;
+            
+            fetch('/api/admin/players', { headers: { 'Authorization': password } })
+            .then(res => {
+                if (!res.ok) throw new Error("Mauvais mot de passe");
+                return res.json();
+            })
+            .then(players => {
+                document.getElementById('login-panel').style.display = 'none';
+                document.getElementById('admin-content').style.display = 'block';
+                
+                const tbody = document.getElementById('player-list');
+                tbody.innerHTML = '';
+                
+                if (players.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Aucune session enregistrée.</td></tr>';
+                    return;
+                }
+                
+                const now = Date.now();
+
+                players.forEach(p => {
+                    const isInfini = p.mode.includes("999999");
+                    const isActive = isInfini ? p.end_time > 0 : p.end_time > now;
+                    const statusHtml = isActive ? '<span class="status-active">En cours</span>' : '<span class="status-ended">Terminé/Attente</span>';
+                    
+                    const displayMode = p.mode.replace('_999999', ' (Infini)').replace('_', ' (').concat(' min)');
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><strong>${p.pseudo}</strong></td>
+                            <td>${displayMode}</td>
+                            <td><strong>${p.score}</strong></td>
+                            <td>${statusHtml}</td>
+                            <td class="actions">
+                                <button class="btn-orange" onclick="resetPlayer('${p.pseudo}', '${p.mode}')">Mettre à 0</button>
+                                <button class="btn-red" onclick="deletePlayer('${p.pseudo}', '${p.mode}')">Supprimer</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            })
+            .catch(err => alert(err.message));
+        }
+
+        function resetPlayer(pseudo, mode) {
+            if(!confirm(`Remettre le score de ${pseudo} à zéro sur ce mode ?`)) return;
+            fetch(`/api/admin/reset/${encodeURIComponent(pseudo)}/${mode}`, { method: 'POST', headers: { 'Authorization': password } })
+            .then(() => loadPlayers());
+        }
+
+        function deletePlayer(pseudo, mode) {
+            if(!confirm(`Supprimer la session de ${pseudo} sur ce mode ?`)) return;
+            fetch(`/api/admin/player/${encodeURIComponent(pseudo)}/${mode}`, { method: 'DELETE', headers: { 'Authorization': password } })
+            .then(() => loadPlayers());
+        }
+
+        function nukeDB() {
+            if(!confirm(`ATTENTION ! Vider toute la base de données ? Cette action effacera TOUS les scores de TOUS les modes.`)) return;
+            fetch('/api/admin/nuke', { method: 'POST', headers: { 'Authorization': password } })
+            .then(() => loadPlayers());
+        }
+    </script>
+</body>
+</html>
